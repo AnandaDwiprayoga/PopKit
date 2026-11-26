@@ -103,6 +103,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
+        let debug = NSMenuItem(title: "Debug Logging", action: #selector(toggleDebugLogging), keyEquivalent: "")
+        debug.target = self
+        debug.state = Diagnostics.isEnabled ? .on : .off
+        debug.toolTip = "Logs what PopKit sees on each selection (never the text) to ~/Library/Logs/PopKit.log"
+        menu.addItem(debug)
+
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
         let about = NSMenuItem(title: "PopKit \(version)", action: nil, keyEquivalent: "")
         about.isEnabled = false
@@ -157,6 +163,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let id = excludableApp?.bundleIdentifier else { return }
         settingsModel.exclude(id)
         popup.dismiss()
+    }
+
+    @objc private func toggleDebugLogging() {
+        Diagnostics.isEnabled.toggle()
+        if Diagnostics.isEnabled { Diagnostics.log("--- debug logging on ---") }
     }
 
     @objc private func openSettings() {

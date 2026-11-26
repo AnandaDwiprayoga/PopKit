@@ -57,7 +57,22 @@ final class PopupController: ExtensionHost {
             return
         }
 
-        let probe = reader.probe(app: app)
+        var probe = reader.probe(app: app)
+        if !probe.focusFound {
+            // Chromium and Electron apps need a moment after being asked for accessibility.
+            Task {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard current == generation else { return }
+                probe = reader.probe(app: app)
+                proceed(with: probe, app: app, current: current, retried: true)
+            }
+            return
+        }
+        proceed(with: probe, app: app, current: current, retried: false)
+    }
+
+    private func proceed(with probe: SelectionProbe, app: NSRunningApplication, current: Int, retried: Bool) {
+        Diagnostics.log("\(app.bundleIdentifier ?? "?") \(retried ? "(retry) " : "")\(probe.details)")
         guard !probe.isSecure else {
             panel.dismiss()
             return
@@ -86,6 +101,7 @@ final class PopupController: ExtensionHost {
             text: text, isEditable: probe.isEditable,
             appBundleID: app.bundleIdentifier, appName: app.localizedName)
         let available = PopupAction.available(manager.popupActions(), for: info)
+        Diagnostics.log("  editable=\(info.isEditable) shows: \(available.map(\.title).joined(separator: " | "))")
         guard !available.isEmpty else {
             panel.dismiss()
             return

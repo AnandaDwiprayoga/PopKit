@@ -11,6 +11,10 @@ struct SelectionProbe {
     var isSecure = false
     /// Bounds of the selection in AppKit screen coordinates, when the app reports them.
     var anchor: CGRect?
+    /// False when no focused element could be read, which usually means the app isn't ready yet.
+    var focusFound = false
+    /// What Accessibility said, for the debug log. Never includes the selected text.
+    var details = "no focused element"
 }
 
 private enum AX {
@@ -38,15 +42,23 @@ final class SelectionReader {
     func probe(app: NSRunningApplication?) -> SelectionProbe {
         var result = SelectionProbe()
         guard let app, let element = focusedElement(of: app) else { return result }
+        result.focusFound = true
 
-        if string(element, AX.subrole) == AX.secureSubrole {
+        let role = string(element, AX.role) ?? "-"
+        let subrole = string(element, AX.subrole) ?? "-"
+        if subrole == AX.secureSubrole {
             result.isSecure = true
+            result.details = "role=\(role) subrole=\(subrole) secure"
             return result
         }
 
         result.text = string(element, AX.selectedText)
         result.isEditable = isEditable(element)
         result.anchor = selectionBounds(of: element)
+        result.details = "role=\(role) subrole=\(subrole) "
+            + "valueSettable=\(isSettable(element, AX.value)) selectedTextSettable=\(isSettable(element, AX.selectedText)) "
+            + "editableAncestor=\(self.element(element, AX.editableAncestor) != nil) "
+            + "text=\(result.text.map { "\($0.count) chars" } ?? "nil") anchor=\(result.anchor != nil)"
         return result
     }
 
