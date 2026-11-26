@@ -64,6 +64,25 @@ Try an example: **Install Extension…**, choose `Examples/Uppercase.popkitext`,
 
 Writing your own is a `Config.json` and a JavaScript file. The full reference is in [docs/extensions.md](docs/extensions.md).
 
+### Featured extension: Refine ✨
+
+[**Refine**](https://github.com/AnandaDwiprayoga/Refine-Popclip) turns rough drafts into natural English right where you type. Select text in Slack, Mail, a browser text box or any editable field and click a button. The selection is replaced with a clean rewrite in your own voice. It is made for non-native speakers who write in a mix of languages: Bahasa Indonesia, chat slang and broken English all come out as friendly-professional English.
+
+- Four rewrite styles: **My style**, **Polite**, **Short** and **Fix only**. Hold ⌥ to preview before pasting.
+- A 🇮🇩 button that translates any selected text into Bahasa Indonesia, including text you can't edit.
+- A privacy guard: links, emails, keys, phone numbers, code and words you list are swapped for placeholders before anything leaves your Mac, and put back afterwards.
+- Uses [Groq](https://groq.com)'s free tier, so you need a free API key.
+
+It was written for PopClip and runs unchanged in PopKit. To install it:
+
+```bash
+git clone https://github.com/AnandaDwiprayoga/Refine-Popclip.git
+```
+
+Then choose **Install Extension…** in the PopKit menu and pick the `Refine.popclipext` folder inside the clone. Open **Settings → Extensions → Refine** and paste your Groq API key, which PopKit keeps in your Keychain. The Refine repository has the details on styles, adding your own writing style, and the privacy guard.
+
+Made your own extension? Open a pull request that adds it to this list.
+
 **Only install extensions you trust.** An extension is code that runs on your Mac and sees the text you click it on. With the `network` entitlement it can send that text anywhere. PopKit asks before installing and tells you whether the extension uses the network.
 
 ## Privacy
