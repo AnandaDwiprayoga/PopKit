@@ -1,0 +1,6 @@
+{
+  "name": "Word Count",
+  "description": "Example extension: show how many words and characters are selected. No network, no options.",
+  "icon": "symbol:number",
+  "module": "index.js"
+}

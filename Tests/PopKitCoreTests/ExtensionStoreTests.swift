@@ -240,3 +240,67 @@ final class ExtensionManagerTests: XCTestCase {
         XCTAssertTrue(manager.popupActions()[0].icon.hasSuffix("/Mine.popkitext/icon.png"))
     }
 }
+
+/// Keeps the extensions shipped in the repo, and the ones the docs point to, loadable.
+@MainActor
+final class ShippedExtensionsTests: XCTestCase {
+    private var repoRoot: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    }
+
+    private func folders(in relative: String) throws -> [URL] {
+        let directory = repoRoot.appendingPathComponent(relative)
+        return try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "popkitext" }
+    }
+
+    func testEveryBundledAndExampleExtensionLoads() throws {
+        let all = try folders(in: "Resources/Extensions") + folders(in: "Examples")
+        XCTAssertGreaterThanOrEqual(all.count, 5)
+        for directory in all {
+            let manifest = try ExtensionManifest.load(directory: directory)
+            let runtime = try ExtensionRuntime(
+                id: manifest.id(directory: directory), manifest: manifest, directory: directory, host: FakeHost())
+            XCTAssertFalse(runtime.actions.isEmpty, directory.lastPathComponent)
+            for action in runtime.actions {
+                XCTAssertNotNil(ActionRequirements.parse(action.requirements), "\(directory.lastPathComponent): \(action.title)")
+            }
+        }
+    }
+
+    func testWordCountExampleShowsAPlainNotice() async throws {
+        let host = FakeHost()
+        let directory = repoRoot.appendingPathComponent("Examples/WordCount.popkitext")
+        let runtime = try ExtensionRuntime(
+            id: "WordCount", manifest: ExtensionManifest.load(directory: directory), directory: directory, host: host)
+        let outcome = await runtime.run(
+            actionAt: 0, selection: SelectionInfo(text: "one two  three", isEditable: false), modifiers: [], options: [:])
+        XCTAssertEqual(outcome, .success)
+        XCTAssertEqual(host.shown.map(\.text), ["3 words, 14 characters"])
+        XCTAssertEqual(host.shown.map(\.style), [.plain])
+    }
+
+    func testDefineExampleUsesTheLargeCardAndHandlesNotFound() async throws {
+        let host = FakeHost()
+        let directory = repoRoot.appendingPathComponent("Examples/Define.popkitext")
+        let runtime = try ExtensionRuntime(
+            id: "Define", manifest: ExtensionManifest.load(directory: directory), directory: directory,
+            host: host, session: StubURLProtocol.session())
+
+        StubURLProtocol.handler = { request, _ in
+            request.url?.lastPathComponent == "hello"
+                ? .init(body: #"[{"word":"hello","meanings":[{"partOfSpeech":"noun","definitions":[{"definition":"A greeting."}]}]}]"#)
+                : .init(status: 404, body: #"{"title":"No Definitions Found"}"#)
+        }
+        _ = await runtime.run(actionAt: 0, selection: SelectionInfo(text: "Hello", isEditable: false), modifiers: [], options: [:])
+        XCTAssertEqual(host.shown.last?.style, .large)
+        XCTAssertEqual(host.shown.last?.text, "hello\n\nnoun: A greeting.")
+
+        _ = await runtime.run(actionAt: 0, selection: SelectionInfo(text: "zzzz", isEditable: false), modifiers: [], options: [:])
+        XCTAssertEqual(host.shown.last?.text, #"No definition found for "zzzz""#)
+
+        _ = await runtime.run(actionAt: 0, selection: SelectionInfo(text: "two words", isEditable: false), modifiers: [], options: [:])
+        XCTAssertEqual(host.shown.last?.text, "Select a single English word")
+    }
+}

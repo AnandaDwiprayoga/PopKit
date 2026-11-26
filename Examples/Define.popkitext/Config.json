@@ -1,0 +1,7 @@
+{
+  "name": "Define",
+  "description": "Example extension: look up the selected English word in a free dictionary API and show the definitions. Shows how to use the network entitlement, axios and the large text card.",
+  "icon": "symbol:character.book.closed",
+  "entitlements": ["network"],
+  "module": "index.js"
+}
