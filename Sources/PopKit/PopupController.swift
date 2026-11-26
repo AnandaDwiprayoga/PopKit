@@ -7,6 +7,7 @@ import PopKitCore
 final class PopupController: ExtensionHost {
     private let rules: ExclusionRules
     private let placement: PlacementRules
+    private let fields: FieldRules
     private let manager: ExtensionManager
     private let reader = SelectionReader()
     private let monitor = SelectionMonitor()
@@ -19,9 +20,10 @@ final class PopupController: ExtensionHost {
     private var generation = 0
     private var selection: SelectionInfo?
 
-    init(rules: ExclusionRules, placement: PlacementRules, manager: ExtensionManager) {
+    init(rules: ExclusionRules, placement: PlacementRules, fields: FieldRules, manager: ExtensionManager) {
         self.rules = rules
         self.placement = placement
+        self.fields = fields
         self.manager = manager
         manager.host = self
         monitor.onCandidate = { [weak self] _ in self?.handleCandidate() }
@@ -72,6 +74,11 @@ final class PopupController: ExtensionHost {
     }
 
     private func proceed(with probe: SelectionProbe, app: NSRunningApplication, current: Int, retried: Bool) {
+        var probe = probe
+        if !probe.focusFound {
+            // The app won't tell us anything (Slack), so editability is a guess.
+            probe.isEditable = fields.assumeEditableWhenUnknown
+        }
         Diagnostics.log("\(app.bundleIdentifier ?? "?") \(retried ? "(retry) " : "")\(probe.details)")
         guard !probe.isSecure else {
             panel.dismiss()

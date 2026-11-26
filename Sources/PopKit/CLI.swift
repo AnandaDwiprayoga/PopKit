@@ -1,3 +1,4 @@
+import ApplicationServices
 import Foundation
 import PopKitCore
 
@@ -14,7 +15,7 @@ enum CLI {
     /// The runtime only holds its host weakly, so this keeps it alive.
     private static let host = CLIHost()
 
-    private static let commands: Set<String> = ["--run", "--list", "--install", "--help"]
+    private static let commands: Set<String> = ["--run", "--list", "--install", "--probe", "--help"]
 
     static func handles(_ arguments: [String]) -> Bool {
         guard let first = arguments.first else { return false }
@@ -26,6 +27,7 @@ enum CLI {
           PopKit --list <extension folder>
           PopKit --run <extension folder> <action title or number> <text> [--modifiers option,shift] [--editable]
           PopKit --install <extension folder>
+          PopKit --probe <bundle id>      (debugging: show an app's accessibility structure, no text)
 
         Options come from POPKIT_OPT_<NAME> environment variables, then the Keychain, then defaults.
         """
@@ -37,6 +39,17 @@ enum CLI {
         case "--list": return list(arguments)
         case "--run": return await runAction(arguments)
         case "--install": return install(arguments)
+        case "--probe":
+            guard let id = arguments.first else { return fail("--probe needs a bundle id, e.g. com.tinyspeck.slackmacgap") }
+            if AXIsProcessTrusted() {
+                print(AXInspector.dump(bundleID: id))
+            } else {
+                // A terminal-launched process has no Accessibility access. Ask the running app, which does.
+                DistributedNotificationCenter.default().postNotificationName(
+                    AXInspector.requestName, object: nil, userInfo: ["bundleID": id], deliverImmediately: true)
+                print("Asked the running PopKit to probe \(id). With Debug Logging on, the result is in \(Diagnostics.logURL.path).")
+            }
+            return 0
         default:
             print(usage)
             return 0

@@ -41,7 +41,11 @@ final class SelectionReader {
 
     func probe(app: NSRunningApplication?) -> SelectionProbe {
         var result = SelectionProbe()
-        guard let app, let element = focusedElement(of: app) else { return result }
+        guard let app else { return result }
+        guard let element = focusedElement(of: app) else {
+            result.details = "no focused element; \(focusErrors(of: app))"
+            return result
+        }
         result.focusFound = true
 
         let role = string(element, AX.role) ?? "-"
@@ -73,6 +77,19 @@ final class SelectionReader {
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(appElement, 0.25)
         return element(appElement, AX.focusedElement)
+    }
+
+    /// AX error codes for the focus queries, for the debug log: -25211 API disabled,
+    /// -25204 cannot complete, -25212 no value, -25205 attribute unsupported.
+    private func focusErrors(of app: NSRunningApplication) -> String {
+        var value: CFTypeRef?
+        let systemWide = AXUIElementCopyAttributeValue(
+            AXUIElementCreateSystemWide(), AX.focusedElement as CFString, &value)
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let focused = AXUIElementCopyAttributeValue(appElement, AX.focusedElement as CFString, &value)
+        let manual = AXUIElementSetAttributeValue(appElement, AX.manualAccessibility as CFString, kCFBooleanTrue)
+        return "trusted=\(AXIsProcessTrusted()) active=\(app.isActive) systemWide=\(systemWide.rawValue) "
+            + "app=\(focused.rawValue) manualAX=\(manual.rawValue)"
     }
 
     /// Chromium and Electron apps expose almost nothing until asked, once per process.

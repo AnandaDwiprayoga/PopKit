@@ -23,10 +23,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let rules = ExclusionRules()
     private let placement = PlacementRules()
+    private let fields = FieldRules()
     private let manager = ExtensionManager()
-    private lazy var settingsModel = SettingsModel(rules: rules, placement: placement, manager: manager)
+    private lazy var settingsModel = SettingsModel(rules: rules, placement: placement, fields: fields, manager: manager)
     private lazy var settingsWindow = SettingsWindowController(model: settingsModel)
-    private lazy var popup = PopupController(rules: rules, placement: placement, manager: manager)
+    private lazy var popup = PopupController(rules: rules, placement: placement, fields: fields, manager: manager)
 
     /// The last frontmost app that isn't PopKit, for "Exclude <app>".
     private var lastActiveApp: NSRunningApplication?
@@ -48,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settingsModel.onInstallRequest = { [weak self] in self?.installExtension() }
         popup.onOpenSettings = { [weak self] id in self?.showSettings(extensionID: id) }
 
+        AXInspector.listenForRequests()
         trackFrontmostApp()
         LoginItem.enableOnFirstRun()
         startWhenTrusted()

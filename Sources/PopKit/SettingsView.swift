@@ -17,6 +17,10 @@ final class SettingsModel: ObservableObject {
     @Published private(set) var excluded: [String]
 
     let placement: PlacementRules
+    let fields: FieldRules
+    @Published var assumeEditable: Bool {
+        didSet { fields.assumeEditableWhenUnknown = assumeEditable }
+    }
     @Published var defaultSide: PopupSide {
         didSet { placement.defaultSide = defaultSide }
     }
@@ -31,9 +35,11 @@ final class SettingsModel: ObservableObject {
     /// Opens the folder picker and install dialog (set by the app delegate).
     var onInstallRequest: (() -> Void)?
 
-    init(rules: ExclusionRules, placement: PlacementRules, manager: ExtensionManager) {
+    init(rules: ExclusionRules, placement: PlacementRules, fields: FieldRules, manager: ExtensionManager) {
         self.rules = rules
         self.placement = placement
+        self.fields = fields
+        self.assumeEditable = fields.assumeEditableWhenUnknown
         self.manager = manager
         self.extensions = manager.store.all()
         self.paused = rules.isPaused
@@ -115,6 +121,10 @@ private struct GeneralTab: View {
                 Text("Above selection").tag(PopupSide.above)
                 Text("Below selection").tag(PopupSide.below)
             }
+
+            Toggle("Show rewrite buttons when an app won't say if text is editable", isOn: $model.assumeEditable)
+            Text("Slack hides its text fields from other apps. With this on, rewrite buttons also show on read-only text there, where pasting does nothing.")
+                .font(.caption).foregroundColor(.secondary)
 
             Toggle("Launch at login", isOn: $launchAtLogin)
                 .disabled(!LoginItem.isInstalledLocation)

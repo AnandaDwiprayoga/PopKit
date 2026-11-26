@@ -45,3 +45,18 @@ final class ExclusionRulesTests: XCTestCase {
         XCTAssertTrue(rules.isExcluded("com.apple.keychainaccess"))
     }
 }
+
+final class FieldRulesTests: XCTestCase {
+    func testDefaultsToAssumingEditableAndPersists() {
+        let suite = "PopKitFieldTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let rules = FieldRules(defaults: defaults)
+        XCTAssertTrue(rules.assumeEditableWhenUnknown)
+        rules.assumeEditableWhenUnknown = false
+        XCTAssertFalse(FieldRules(defaults: defaults).assumeEditableWhenUnknown)
+        rules.assumeEditableWhenUnknown = true
+        XCTAssertTrue(FieldRules(defaults: defaults).assumeEditableWhenUnknown)
+    }
+}
