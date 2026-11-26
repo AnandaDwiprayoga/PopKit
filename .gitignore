@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# SwiftPM and build output
+.build/
+.swiftpm/
+build/
+*.xcodeproj
+xcuserdata/
+
+# Local secrets and env files
+.env
+.env.*
+*.local
+
+# Claude Code local settings
+.claude/settings.local.json
