@@ -16,6 +16,9 @@ enum Main {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let rules = ExclusionRules()
+    private lazy var settingsModel = SettingsModel(rules: rules)
+    private lazy var settingsWindow = SettingsWindowController(model: settingsModel)
+    private lazy var popup = PopupController(rules: rules)
 
     /// The last frontmost app that isn't PopKit, for "Exclude <app>".
     private var lastActiveApp: NSRunningApplication?
@@ -28,8 +31,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         statusItem.menu = menu
 
+        settingsModel.onPauseChange = { [weak self] in
+            self?.updateIcon()
+            self?.popup.dismiss()
+        }
+
         trackFrontmostApp()
         LoginItem.enableOnFirstRun()
+        startWhenTrusted()
+    }
+
+    /// Global event monitors only work once Accessibility is granted, so start them then.
+    private func startWhenTrusted() {
+        if Permissions.isTrusted {
+            popup.start()
+            return
+        }
+        Permissions.waitUntilGranted { [weak self] in self?.popup.start() }
+        DispatchQueue.main.async { Permissions.showOnboarding() }
     }
 
     // MARK: Menu
@@ -38,6 +57,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
+        if !Permissions.isTrusted {
+            let grant = NSMenuItem(title: "Grant Accessibility Access…", action: #selector(grantAccess), keyEquivalent: "")
+            grant.target = self
+            menu.addItem(grant)
+            menu.addItem(.separator())
+        }
+
         let pause = NSMenuItem(title: "Pause PopKit", action: #selector(togglePause), keyEquivalent: "")
         pause.state = rules.isPaused ? .on : .off
         pause.target = self
@@ -45,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let exclude = NSMenuItem(title: excludeTitle, action: #selector(excludeLastApp), keyEquivalent: "")
         exclude.target = self
-        exclude.isEnabled = excludableApp != nil
+        exclude.isEnabled = excludableApp != nil && !rules.isExcluded(excludableApp?.bundleIdentifier)
         menu.addItem(exclude)
 
         menu.addItem(.separator())
@@ -55,13 +81,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         install.isEnabled = false
         menu.addItem(install)
 
-        menu.addItem(.separator())
-
-        let login = NSMenuItem(title: "Launch at Login", action: #selector(toggleLogin), keyEquivalent: "")
-        login.target = self
-        login.state = LoginItem.isEnabled ? .on : .off
-        login.isEnabled = LoginItem.isInstalledLocation
-        menu.addItem(login)
+        let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
 
         menu.addItem(.separator())
 
@@ -84,23 +106,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return rules.isExcluded(app.bundleIdentifier) ? "\(name) Is Excluded" : "Exclude \(name)"
     }
 
+    @objc private func grantAccess() {
+        Permissions.prompt()
+        Permissions.openSystemSettings()
+        if !popup.isRunning {
+            Permissions.waitUntilGranted { [weak self] in self?.popup.start() }
+        }
+    }
+
     @objc private func togglePause() {
-        rules.isPaused.toggle()
-        updateIcon()
+        settingsModel.paused.toggle()
     }
 
     @objc private func excludeLastApp() {
         guard let id = excludableApp?.bundleIdentifier else { return }
-        rules.exclude(id)
+        settingsModel.exclude(id)
+        popup.dismiss()
     }
 
-    @objc private func toggleLogin() {
-        do {
-            try LoginItem.setEnabled(!LoginItem.isEnabled)
-        } catch {
-            NSLog("PopKit: launch at login failed: \(error)")
-        }
-        if LoginItem.needsApproval { LoginItem.openSystemSettings() }
+    @objc private func openSettings() {
+        settingsWindow.show()
     }
 
     // MARK: Status item
