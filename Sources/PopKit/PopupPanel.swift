@@ -10,14 +10,27 @@ final class PopupModel: ObservableObject {
     @Published var runningID: String?
     /// Set briefly after an action finishes: the bar shows ✓ or ✗.
     @Published var result: ActionOutcome?
+    /// Text from `popclip.showText`, shown in place of the buttons.
+    @Published var card: TextCard?
 
     var onSelect: ((PopupAction) -> Void)?
+    var onCardActivate: (() -> Void)?
+    var onCardCopy: (() -> Void)?
+    var onCardClose: (() -> Void)?
 
     func reset() {
         actions = []
         runningID = nil
         result = nil
+        card = nil
     }
+}
+
+struct TextCard: Equatable {
+    var text: String
+    var style: ShowTextStyle
+    /// A preview in an editable field pastes when clicked. Otherwise it copies.
+    var canPaste: Bool
 }
 
 /// A floating bar that never takes focus, so the app you selected in keeps its selection,
@@ -63,6 +76,7 @@ final class PopupPanel: NSPanel {
     func present(actions: [PopupAction], anchor: CGRect, side: PopupSide) {
         model.runningID = nil
         model.result = nil
+        model.card = nil
         model.actions = actions
         self.anchor = anchor
         self.side = side
@@ -77,7 +91,7 @@ final class PopupPanel: NSPanel {
     }
 
     private func refit() {
-        guard !model.actions.isEmpty || model.result != nil else { return }
+        guard !model.actions.isEmpty || model.result != nil || model.card != nil else { return }
         hosting.layoutSubtreeIfNeeded()
         let size = hosting.fittingSize
         let center = CGPoint(x: anchor.midX, y: anchor.midY)
@@ -92,7 +106,9 @@ struct PopupView: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            if let result = model.result {
+            if let card = model.card {
+                CardView(model: model, card: card)
+            } else if let result = model.result {
                 Text(result.isSuccess ? "✓" : "✗")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(result.isSuccess ? .green : .red)
@@ -126,7 +142,7 @@ private struct ActionButton: View {
                 if isRunning {
                     ProgressView().controlSize(.small)
                 } else {
-                    icon
+                    IconView(icon: action.icon)
                 }
             }
             .frame(width: 30, height: 28)
@@ -139,14 +155,69 @@ private struct ActionButton: View {
         .onHover { hovering = $0 }
         .help(action.title)
     }
+}
 
-    @ViewBuilder private var icon: some View {
-        let symbolPrefix = "symbol:"
-        if action.icon.hasPrefix(symbolPrefix) {
-            Image(systemName: String(action.icon.dropFirst(symbolPrefix.count)))
-                .font(.system(size: 14))
+/// An extension icon: `symbol:<SF Symbol>`, `file:<path to a PNG>`, or an emoji or short text.
+struct IconView: View {
+    let icon: String
+    var size: CGFloat = 15
+
+    var body: some View {
+        if icon.hasPrefix("symbol:") {
+            Image(systemName: String(icon.dropFirst("symbol:".count)))
+                .font(.system(size: size - 1))
+        } else if icon.hasPrefix("file:"), let image = NSImage(contentsOfFile: String(icon.dropFirst("file:".count))) {
+            Image(nsImage: image).resizable().scaledToFit().frame(width: size + 3, height: size + 3)
         } else {
-            Text(action.icon).font(.system(size: 15))
+            Text(icon).font(.system(size: size))
+        }
+    }
+}
+
+/// Text from `popclip.showText`.
+private struct CardView: View {
+    @ObservedObject var model: PopupModel
+    let card: TextCard
+
+    var body: some View {
+        switch card.style {
+        case .plain:
+            Text(card.text)
+                .font(.system(size: 12))
+                .lineLimit(3)
+                .frame(maxWidth: 320)
+                .padding(.horizontal, 8).padding(.vertical, 6)
+        case .preview:
+            Button { model.onCardActivate?() } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: card.canPaste ? "arrow.down.doc" : "doc.on.doc")
+                        .font(.system(size: 12)).foregroundColor(.secondary)
+                    Text(card.text)
+                        .font(.system(size: 12))
+                        .lineLimit(4)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: 340, alignment: .leading)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(card.canPaste ? "Click to paste" : "Click to copy")
+        case .large:
+            VStack(alignment: .leading, spacing: 8) {
+                ScrollView {
+                    Text(card.text)
+                        .font(.system(size: 13))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(width: 400, height: 200)
+                HStack {
+                    Button("Copy") { model.onCardCopy?() }
+                    Spacer()
+                    Button("Close") { model.onCardClose?() }
+                }
+            }
+            .padding(10)
         }
     }
 }

@@ -1,0 +1,6 @@
+{
+  "name": "Copy",
+  "description": "Copy the selected text to the clipboard.",
+  "icon": "symbol:doc.on.doc",
+  "module": "index.js"
+}

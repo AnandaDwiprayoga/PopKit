@@ -10,6 +10,20 @@ public struct ActionRequirements: OptionSet, Equatable {
     /// The selection is in an editable field, so it can be replaced.
     public static let paste = ActionRequirements(rawValue: 1 << 1)
 
+    /// Reads the names an extension lists in `requirements`. Nil when one is unsupported
+    /// (PopClip has more, like "urls" or "option-x"), so the action is left out rather than shown wrongly.
+    public static func parse(_ names: [String]) -> ActionRequirements? {
+        var result: ActionRequirements = []
+        for name in names {
+            switch name {
+            case "text": result.insert(.text)
+            case "paste": result.insert(.paste)
+            default: return nil
+            }
+        }
+        return result
+    }
+
     public func isSatisfied(isEditable: Bool) -> Bool {
         var provided: ActionRequirements = .text
         if isEditable { provided.insert(.paste) }

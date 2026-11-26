@@ -1,0 +1,16 @@
+{
+  "name": "Search",
+  "description": "Search the web for the selected text.",
+  "icon": "symbol:magnifyingglass",
+  "module": "index.js",
+  "options": [
+    {
+      "identifier": "engine",
+      "type": "multiple",
+      "label": "Search engine",
+      "values": ["google", "duckduckgo", "bing"],
+      "valueLabels": ["Google", "DuckDuckGo", "Bing"],
+      "defaultValue": "google"
+    }
+  ]
+}

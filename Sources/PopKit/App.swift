@@ -4,6 +4,12 @@ import PopKitCore
 @main
 enum Main {
     static func main() {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if CLI.handles(arguments) {
+            Task { @MainActor in exit(await CLI.run(arguments)) }
+            dispatchMain()
+        }
+
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -17,9 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let rules = ExclusionRules()
     private let placement = PlacementRules()
-    private lazy var settingsModel = SettingsModel(rules: rules, placement: placement)
+    private let manager = ExtensionManager()
+    private lazy var settingsModel = SettingsModel(rules: rules, placement: placement, manager: manager)
     private lazy var settingsWindow = SettingsWindowController(model: settingsModel)
-    private lazy var popup = PopupController(rules: rules, placement: placement)
+    private lazy var popup = PopupController(rules: rules, placement: placement, manager: manager)
 
     /// The last frontmost app that isn't PopKit, for "Exclude <app>".
     private var lastActiveApp: NSRunningApplication?
@@ -36,6 +43,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.updateIcon()
             self?.popup.dismiss()
         }
+
+        manager.onChange = { [weak self] in self?.settingsModel.reloadExtensions() }
+        settingsModel.onInstallRequest = { [weak self] in self?.installExtension() }
+        popup.onOpenSettings = { [weak self] id in self?.showSettings(extensionID: id) }
 
         trackFrontmostApp()
         LoginItem.enableOnFirstRun()
@@ -82,9 +93,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        // Wired up in the extension runtime milestone.
-        let install = NSMenuItem(title: "Install Extension…", action: nil, keyEquivalent: "")
-        install.isEnabled = false
+        let install = NSMenuItem(title: "Install Extension…", action: #selector(installExtension), keyEquivalent: "")
+        install.target = self
         menu.addItem(install)
 
         let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
@@ -151,6 +161,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openSettings() {
         settingsWindow.show()
+    }
+
+    private func showSettings(extensionID: String) {
+        settingsModel.tab = .extensions
+        settingsModel.selectedExtensionID = extensionID
+        settingsWindow.show()
+    }
+
+    // MARK: Installing extensions
+
+    @objc private func installExtension() {
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSOpenPanel()
+        panel.message = "Choose an extension folder (.popkitext or .popclipext)"
+        panel.prompt = "Choose"
+        panel.canChooseFiles = true  // a .popkitext folder is a package, which the panel treats as a file
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        guard panel.runModal() == .OK else { return }
+        install(urls: panel.urls)
+    }
+
+    /// Also reached by dropping an extension folder on the app's icon in Finder.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        install(urls: urls)
+    }
+
+    private func install(urls: [URL]) {
+        NSApp.activate(ignoringOtherApps: true)
+        for url in urls {
+            do {
+                let candidate = try manager.store.preflight(url)
+                guard confirmInstall(candidate) else { continue }
+                let installed = try manager.install(from: url)
+                showSettings(extensionID: installed.id)
+            } catch {
+                NSAlert(error: error).runModal()
+            }
+        }
+    }
+
+    private func confirmInstall(_ candidate: ExtensionCandidate) -> Bool {
+        let manifest = candidate.manifest
+        var lines: [String] = []
+        if let description = manifest.description { lines.append(description) }
+        if manifest.allowsNetwork { lines.append("This extension can use the network.") }
+        if candidate.replaces { lines.append("It replaces the installed version. Your settings for it are kept.") }
+        lines.append("Extensions run code on your Mac and can see the text you select. Only install extensions you trust.")
+
+        let alert = NSAlert()
+        alert.messageText = "Install “\(manifest.name)”?"
+        alert.informativeText = lines.joined(separator: "\n\n")
+        alert.addButton(withTitle: candidate.replaces ? "Replace" : "Install")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     // MARK: Status item

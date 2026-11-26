@@ -1,0 +1,6 @@
+{
+  "name": "Uppercase",
+  "description": "Example extension: replace the selection with its UPPERCASE form. Hold ⌥ to preview first.",
+  "icon": "AA",
+  "module": "index.js"
+}

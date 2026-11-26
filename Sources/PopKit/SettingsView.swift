@@ -24,13 +24,35 @@ final class SettingsModel: ObservableObject {
 
     var onPauseChange: (() -> Void)?
 
-    init(rules: ExclusionRules, placement: PlacementRules) {
+    let manager: ExtensionManager
+    @Published var tab: SettingsTab = .general
+    @Published var selectedExtensionID: String?
+    @Published private(set) var extensions: [InstalledExtension]
+    /// Opens the folder picker and install dialog (set by the app delegate).
+    var onInstallRequest: (() -> Void)?
+
+    init(rules: ExclusionRules, placement: PlacementRules, manager: ExtensionManager) {
         self.rules = rules
         self.placement = placement
+        self.manager = manager
+        self.extensions = manager.store.all()
         self.paused = rules.isPaused
         self.excluded = rules.excludedBundleIDs
         self.defaultSide = placement.defaultSide
         self.sideOverrides = placement.overrides
+    }
+
+    func reloadExtensions() {
+        extensions = manager.store.all()
+        if let id = selectedExtensionID, !extensions.contains(where: { $0.id == id }) {
+            selectedExtensionID = extensions.first?.id
+        }
+    }
+
+    func moveExtensions(from offsets: IndexSet, to destination: Int) {
+        var ids = extensions.map(\.id)
+        ids.move(fromOffsets: offsets, toOffset: destination)
+        manager.setOrder(ids)
     }
 
     func setSide(_ side: PopupSide, for bundleID: String) {
@@ -54,19 +76,29 @@ final class SettingsModel: ObservableObject {
     }
 }
 
+enum SettingsTab: Hashable {
+    case general, extensions, position, excluded
+}
+
 struct SettingsView: View {
     @ObservedObject var model: SettingsModel
 
     var body: some View {
-        TabView {
+        TabView(selection: $model.tab) {
             GeneralTab(model: model)
                 .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(SettingsTab.general)
+            ExtensionsTab(model: model)
+                .tabItem { Label("Extensions", systemImage: "puzzlepiece.extension") }
+                .tag(SettingsTab.extensions)
             PositionTab(model: model)
                 .tabItem { Label("Position", systemImage: "arrow.up.and.down.text.horizontal") }
+                .tag(SettingsTab.position)
             ExcludedAppsTab(model: model)
                 .tabItem { Label("Excluded Apps", systemImage: "nosign") }
+                .tag(SettingsTab.excluded)
         }
-        .frame(width: 460, height: 360)
+        .frame(width: 640, height: 440)
     }
 }
 
