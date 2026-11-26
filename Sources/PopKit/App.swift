@@ -16,9 +16,10 @@ enum Main {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let rules = ExclusionRules()
-    private lazy var settingsModel = SettingsModel(rules: rules)
+    private let placement = PlacementRules()
+    private lazy var settingsModel = SettingsModel(rules: rules, placement: placement)
     private lazy var settingsWindow = SettingsWindowController(model: settingsModel)
-    private lazy var popup = PopupController(rules: rules)
+    private lazy var popup = PopupController(rules: rules, placement: placement)
 
     /// The last frontmost app that isn't PopKit, for "Exclude <app>".
     private var lastActiveApp: NSRunningApplication?
@@ -74,6 +75,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         exclude.isEnabled = excludableApp != nil && !rules.isExcluded(excludableApp?.bundleIdentifier)
         menu.addItem(exclude)
 
+        let side = NSMenuItem(title: sideTitle, action: #selector(flipSideForLastApp), keyEquivalent: "")
+        side.target = self
+        side.isEnabled = excludableApp != nil
+        menu.addItem(side)
+
         menu.addItem(.separator())
 
         // Wired up in the extension runtime milestone.
@@ -104,6 +110,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var excludeTitle: String {
         guard let app = excludableApp, let name = app.localizedName else { return "Exclude Current App" }
         return rules.isExcluded(app.bundleIdentifier) ? "\(name) Is Excluded" : "Exclude \(name)"
+    }
+
+    private var currentSide: PopupSide { placement.side(for: excludableApp?.bundleIdentifier) }
+
+    private var sideTitle: String {
+        let target = currentSide.opposite == .below ? "Below" : "Above"
+        guard let name = excludableApp?.localizedName else { return "Show Popup \(target) Text" }
+        return "Show Popup \(target) Text in \(name)"
+    }
+
+    /// Moves the last active app to the other side. Going back to the default drops the override.
+    @objc private func flipSideForLastApp() {
+        guard let id = excludableApp?.bundleIdentifier else { return }
+        let target = currentSide.opposite
+        if target == placement.defaultSide {
+            settingsModel.removeSide(for: id)
+        } else {
+            settingsModel.setSide(target, for: id)
+        }
     }
 
     @objc private func grantAccess() {

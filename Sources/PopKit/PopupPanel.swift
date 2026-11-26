@@ -28,6 +28,7 @@ final class PopupPanel: NSPanel {
 
     private var hosting: NSHostingView<PopupView>!
     private var anchor: CGRect = .zero
+    private var side: PopupSide = .above
     private var changes: AnyCancellable?
 
     init() {
@@ -59,11 +60,12 @@ final class PopupPanel: NSPanel {
 
     var isShowing: Bool { isVisible }
 
-    func present(actions: [PopupAction], anchor: CGRect) {
+    func present(actions: [PopupAction], anchor: CGRect, side: PopupSide) {
         model.runningID = nil
         model.result = nil
         model.actions = actions
         self.anchor = anchor
+        self.side = side
         refit()
         orderFrontRegardless()
     }
@@ -81,7 +83,7 @@ final class PopupPanel: NSPanel {
         let center = CGPoint(x: anchor.midX, y: anchor.midY)
         let screen = NSScreen.screens.first { $0.frame.contains(center) } ?? NSScreen.main
         guard let visible = screen?.visibleFrame else { return }
-        setFrame(PopupPlacement.frame(size: size, anchor: anchor, visible: visible), display: true)
+        setFrame(PopupPlacement.frame(size: size, anchor: anchor, visible: visible, preferred: side), display: true)
     }
 }
 

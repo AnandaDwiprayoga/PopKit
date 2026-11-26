@@ -16,12 +16,31 @@ final class SettingsModel: ObservableObject {
     }
     @Published private(set) var excluded: [String]
 
+    let placement: PlacementRules
+    @Published var defaultSide: PopupSide {
+        didSet { placement.defaultSide = defaultSide }
+    }
+    @Published private(set) var sideOverrides: [String: PopupSide]
+
     var onPauseChange: (() -> Void)?
 
-    init(rules: ExclusionRules) {
+    init(rules: ExclusionRules, placement: PlacementRules) {
         self.rules = rules
+        self.placement = placement
         self.paused = rules.isPaused
         self.excluded = rules.excludedBundleIDs
+        self.defaultSide = placement.defaultSide
+        self.sideOverrides = placement.overrides
+    }
+
+    func setSide(_ side: PopupSide, for bundleID: String) {
+        placement.setSide(side, for: bundleID)
+        sideOverrides = placement.overrides
+    }
+
+    func removeSide(for bundleID: String) {
+        placement.removeOverride(for: bundleID)
+        sideOverrides = placement.overrides
     }
 
     func exclude(_ bundleID: String) {
@@ -42,6 +61,8 @@ struct SettingsView: View {
         TabView {
             GeneralTab(model: model)
                 .tabItem { Label("General", systemImage: "gearshape") }
+            PositionTab(model: model)
+                .tabItem { Label("Position", systemImage: "arrow.up.and.down.text.horizontal") }
             ExcludedAppsTab(model: model)
                 .tabItem { Label("Excluded Apps", systemImage: "nosign") }
         }
@@ -57,6 +78,11 @@ private struct GeneralTab: View {
     var body: some View {
         Form {
             Toggle("Pause PopKit", isOn: $model.paused)
+
+            Picker("Show popup", selection: $model.defaultSide) {
+                Text("Above selection").tag(PopupSide.above)
+                Text("Below selection").tag(PopupSide.below)
+            }
 
             Toggle("Launch at login", isOn: $launchAtLogin)
                 .disabled(!LoginItem.isInstalledLocation)
@@ -87,6 +113,96 @@ private struct GeneralTab: View {
         .onAppear {
             trusted = Permissions.isTrusted
             launchAtLogin = LoginItem.isEnabled
+        }
+    }
+}
+
+private struct PositionTab: View {
+    @ObservedObject var model: SettingsModel
+
+    private var sortedIDs: [String] {
+        model.sideOverrides.keys.sorted { AppInfo.lookup($0).name.localizedCaseInsensitiveCompare(AppInfo.lookup($1).name) == .orderedAscending }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Apps listed here use their own side. All other apps use “\(model.defaultSide == .above ? "Above" : "Below") selection”.")
+                .font(.callout).foregroundColor(.secondary)
+
+            List {
+                ForEach(sortedIDs, id: \.self) { id in
+                    HStack(spacing: 10) {
+                        AppLabel(bundleID: id)
+                        Spacer()
+                        Picker("", selection: Binding(
+                            get: { model.sideOverrides[id] ?? model.defaultSide },
+                            set: { model.setSide($0, for: id) })
+                        ) {
+                            Text("Above").tag(PopupSide.above)
+                            Text("Below").tag(PopupSide.below)
+                        }
+                        .labelsHidden()
+                        .frame(width: 90)
+                        Button { model.removeSide(for: id) } label: { Image(systemName: "minus.circle") }
+                            .buttonStyle(.borderless)
+                            .help("Use the default for this app")
+                    }
+                }
+            }
+            .overlay {
+                if model.sideOverrides.isEmpty {
+                    Text("No per-app settings").foregroundColor(.secondary)
+                }
+            }
+
+            Menu("Add App") {
+                ForEach(runningApps(excluding: Set(model.sideOverrides.keys)), id: \.bundleIdentifier) { app in
+                    Button(app.localizedName ?? app.bundleIdentifier ?? "App") {
+                        if let id = app.bundleIdentifier { model.setSide(model.defaultSide.opposite, for: id) }
+                    }
+                }
+                Divider()
+                Button("Choose App…") {
+                    if let id = chooseAppBundleID() { model.setSide(model.defaultSide.opposite, for: id) }
+                }
+            }
+            .fixedSize()
+        }
+        .padding(20)
+    }
+}
+
+private func runningApps(excluding ids: Set<String>) -> [NSRunningApplication] {
+    let lowered = Set(ids.map { $0.lowercased() })
+    return NSWorkspace.shared.runningApplications
+        .filter { app in
+            guard app.activationPolicy == .regular, let id = app.bundleIdentifier else { return false }
+            return id != Bundle.main.bundleIdentifier && !lowered.contains(id.lowercased())
+        }
+        .sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }
+}
+
+@MainActor
+private func chooseAppBundleID() -> String? {
+    let panel = NSOpenPanel()
+    panel.allowedContentTypes = [.applicationBundle]
+    panel.directoryURL = URL(fileURLWithPath: "/Applications")
+    panel.allowsMultipleSelection = false
+    guard panel.runModal() == .OK, let url = panel.url else { return nil }
+    return Bundle(url: url)?.bundleIdentifier
+}
+
+private struct AppLabel: View {
+    let bundleID: String
+
+    var body: some View {
+        let info = AppInfo.lookup(bundleID)
+        HStack(spacing: 10) {
+            Image(nsImage: info.icon).resizable().frame(width: 24, height: 24)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(info.name)
+                Text(bundleID).font(.caption).foregroundColor(.secondary)
+            }
         }
     }
 }

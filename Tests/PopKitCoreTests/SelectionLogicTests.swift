@@ -99,3 +99,97 @@ final class AppQuirksTests: XCTestCase {
         XCTAssertTrue(AppQuirks.allowsCopyFallback(nil))
     }
 }
+
+final class PopupSidePlacementTests: XCTestCase {
+    private let visible = CGRect(x: 0, y: 0, width: 1000, height: 800)
+    private let size = CGSize(width: 100, height: 40)
+
+    func testBelowPreferred() {
+        let frame = PopupPlacement.frame(
+            size: size, anchor: CGRect(x: 400, y: 300, width: 200, height: 20), visible: visible, preferred: .below)
+        XCTAssertEqual(frame.origin.y, 300 - 6 - 40)
+    }
+
+    func testBelowFlipsAboveNearBottomEdge() {
+        let frame = PopupPlacement.frame(
+            size: size, anchor: CGRect(x: 400, y: 20, width: 200, height: 20), visible: visible, preferred: .below)
+        XCTAssertEqual(frame.origin.y, 20 + 20 + 6)
+    }
+
+    func testAboveFlipsBelowNearTopEdge() {
+        let frame = PopupPlacement.frame(
+            size: size, anchor: CGRect(x: 400, y: 770, width: 200, height: 20), visible: visible, preferred: .above)
+        XCTAssertEqual(frame.origin.y, 770 - 6 - 40)
+    }
+
+    func testNoRoomEitherSideStaysOnScreen() {
+        let frame = PopupPlacement.frame(
+            size: size, anchor: CGRect(x: 400, y: -50, width: 200, height: 900), visible: visible, preferred: .below)
+        XCTAssertTrue(visible.contains(frame))
+    }
+
+    func testOpposite() {
+        XCTAssertEqual(PopupSide.above.opposite, .below)
+        XCTAssertEqual(PopupSide.below.opposite, .above)
+    }
+}
+
+final class PlacementRulesTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private var suite: String!
+
+    override func setUp() {
+        suite = "PopKitPlacementTests.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suite)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    func testDefaultIsAbove() {
+        let rules = PlacementRules(defaults: defaults)
+        XCTAssertEqual(rules.defaultSide, .above)
+        XCTAssertEqual(rules.side(for: "com.tinyspeck.slackmacgap"), .above)
+        XCTAssertEqual(rules.side(for: nil), .above)
+    }
+
+    func testOverrideBeatsDefault() {
+        let rules = PlacementRules(defaults: defaults)
+        rules.setSide(.below, for: "com.tinyspeck.slackmacgap")
+        XCTAssertEqual(rules.side(for: "com.tinyspeck.slackmacgap"), .below)
+        XCTAssertEqual(rules.side(for: "com.apple.TextEdit"), .above)
+    }
+
+    func testChangingDefaultMovesOnlyAppsWithoutOverride() {
+        let rules = PlacementRules(defaults: defaults)
+        rules.setSide(.below, for: "com.tinyspeck.slackmacgap")
+        rules.defaultSide = .below
+        rules.setSide(.above, for: "com.apple.Notes")
+        XCTAssertEqual(rules.side(for: "com.apple.TextEdit"), .below)
+        XCTAssertEqual(rules.side(for: "com.apple.Notes"), .above)
+        XCTAssertEqual(rules.side(for: "com.tinyspeck.slackmacgap"), .below)
+    }
+
+    func testMatchingIgnoresCaseAndDoesNotDuplicate() {
+        let rules = PlacementRules(defaults: defaults)
+        rules.setSide(.below, for: "com.tinyspeck.slackmacgap")
+        rules.setSide(.above, for: "COM.TINYSPECK.SLACKMACGAP")
+        XCTAssertEqual(rules.overrides.count, 1)
+        XCTAssertEqual(rules.side(for: "com.tinyspeck.slackmacgap"), .above)
+    }
+
+    func testPersistsAndRemoves() {
+        let rules = PlacementRules(defaults: defaults)
+        rules.defaultSide = .below
+        rules.setSide(.above, for: "com.apple.Notes")
+
+        let reloaded = PlacementRules(defaults: defaults)
+        XCTAssertEqual(reloaded.defaultSide, .below)
+        XCTAssertEqual(reloaded.override(for: "com.apple.Notes"), .above)
+
+        reloaded.removeOverride(for: "com.apple.notes")
+        XCTAssertNil(reloaded.override(for: "com.apple.Notes"))
+        XCTAssertEqual(reloaded.side(for: "com.apple.Notes"), .below)
+    }
+}

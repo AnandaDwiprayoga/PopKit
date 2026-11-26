@@ -5,6 +5,7 @@ import PopKitCore
 @MainActor
 final class PopupController {
     private let rules: ExclusionRules
+    private let placement: PlacementRules
     private let reader = SelectionReader()
     private let monitor = SelectionMonitor()
     private let panel = PopupPanel()
@@ -15,8 +16,9 @@ final class PopupController {
     private var generation = 0
     private var selection: SelectionInfo?
 
-    init(rules: ExclusionRules) {
+    init(rules: ExclusionRules, placement: PlacementRules) {
         self.rules = rules
+        self.placement = placement
         monitor.onCandidate = { [weak self] _ in self?.handleCandidate() }
         monitor.onDismiss = { [weak self] in self?.dismiss() }
         monitor.isPopupVisible = { [weak self] in self?.panel.isShowing ?? false }
@@ -81,7 +83,7 @@ final class PopupController {
             return
         }
         selection = info
-        panel.present(actions: available, anchor: anchor)
+        panel.present(actions: available, anchor: anchor, side: placement.side(for: app.bundleIdentifier))
     }
 
     // MARK: Running an action
