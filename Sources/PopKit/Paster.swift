@@ -57,7 +57,9 @@ enum Paster {
         Keystroke.post(keyCode: Keystroke.keyV, flags: .maskCommand)
 
         guard let saved else { return }
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        // Electron apps (Slack) can read the clipboard well after ⌘V. Restoring too early
+        // makes them paste the old clipboard instead of the new text.
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
         // Only restore if nothing else (the user's own ⌘C, say) wrote in the meantime.
         if board.changeCount == changeCount { saved.restore(to: board) }
     }

@@ -153,23 +153,33 @@ final class SelectionReader {
     // MARK: ⌘C fallback
 
     /// For apps that don't expose their selection: press ⌘C, read what lands on the clipboard,
-    /// then put the old clipboard back. Returns nil when the clipboard didn't change.
+    /// then put the old clipboard back. Returns nil when nothing was copied.
+    ///
+    /// The clipboard is emptied before ⌘C, so the only text that can be read afterwards is
+    /// what the app just copied. Without that, anything else that touched the clipboard in
+    /// the meantime (another PopKit, a clipboard manager restoring an item) could hand back
+    /// the old clipboard, and an extension would act on that instead of the selection.
     func readViaCopy() async -> String? {
         let board = NSPasteboard.general
         let saved = PasteboardSnapshot.capture(board)
-        let before = board.changeCount
+        board.clearContents()
+        let cleared = board.changeCount
 
         Keystroke.post(keyCode: Keystroke.keyC, flags: .maskCommand)
 
         var text: String?
-        for _ in 0..<10 {
+        // Electron apps (Slack) can take a few hundred ms to answer ⌘C.
+        for _ in 0..<20 {
             try? await Task.sleep(nanoseconds: 30_000_000)
-            if board.changeCount != before {
+            if board.changeCount != cleared {
+                // Give the app a moment to finish writing all its types.
+                try? await Task.sleep(nanoseconds: 20_000_000)
                 text = board.string(forType: .string)
                 break
             }
         }
-        if board.changeCount != before { saved.restore(to: board) }
+        saved.restore(to: board)
+        guard let text, !text.isEmpty else { return nil }
         return text
     }
 }

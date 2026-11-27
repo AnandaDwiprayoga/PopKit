@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastActiveApp: NSRunningApplication?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        quitOtherInstances()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         updateIcon()
 
@@ -53,6 +54,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         trackFrontmostApp()
         LoginItem.enableOnFirstRun()
         startWhenTrusted()
+    }
+
+    /// Two copies (say ~/Applications/PopKit.app and a fresh build/PopKit.app) would both
+    /// show a bar and both press ⌘C for the same selection. Their clipboard save/restore then
+    /// races, and one of them reads the old clipboard instead of the selection. The newest
+    /// launch wins, matching `./build.sh --install`.
+    private func quitOtherInstances() {
+        let me = ProcessInfo.processInfo.processIdentifier
+        guard let bundleID = Bundle.main.bundleIdentifier else { return }
+        for other in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        where other.processIdentifier != me {
+            NSLog("PopKit: quitting the other running copy (pid \(other.processIdentifier))")
+            if !other.terminate() { other.forceTerminate() }
+        }
     }
 
     /// Global event monitors only work once Accessibility is granted, so start them then.
